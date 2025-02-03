@@ -1,0 +1,120 @@
+import flet
+from flet import (
+    Page, Column, Row, ElevatedButton, Image as FletImage,
+    FilePicker, FilePickerResultEvent, Text
+)
+from PIL import Image as PILImage, ImageFilter, ImageOps
+import io
+import base64
+
+def main(page: Page):
+    store = {
+        "pil_image": None,       # Объект PIL.Image
+    }
+
+    info_text = Text(value="Картинка не загружена")
+
+    # Используем либо `src` (data-url), либо `src_base64`.
+    image_viewer = FletImage(
+        src="",
+        width=400,
+        height=300,
+        fit="contain"
+    )
+
+    file_picker_open = FilePicker()
+
+    def pick_files_result(e: FilePickerResultEvent):
+        if e.files:
+            path = e.files[0].path
+            try:
+                pil_img = PILImage.open(path)
+                store["pil_image"] = pil_img
+                refresh_image_viewer()
+                info_text.value = f"Загружен файл: {path}"
+            except Exception as ex:
+                info_text.value = f"Ошибка при загрузке: {ex}"
+        else:
+            info_text.value = "Файл не выбран."
+        page.update()
+
+    def refresh_image_viewer():
+        if store["pil_image"] is None:
+            return
+        # Конвертируем PIL-изображение в байты (PNG)
+        buf = io.BytesIO()
+        store["pil_image"].save(buf, format="PNG")
+        img_bytes = buf.getvalue()
+
+        # Кодируем байты в base64
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+
+        # Указываем виджету Image, что надо использовать base64-данные
+        image_viewer.src = None  # На всякий случай сбросим src
+        image_viewer.src_base64 = img_base64
+
+        page.update()
+
+    def grayscale_click(e):
+        if store["pil_image"] is None:
+            info_text.value = "Сначала загрузите картинку!"
+            page.update()
+            return
+        store["pil_image"] = ImageOps.grayscale(store["pil_image"])
+        refresh_image_viewer()
+
+    def blur_click(e):
+        if store["pil_image"] is None:
+            info_text.value = "Сначала загрузите картинку!"
+            page.update()
+            return
+        store["pil_image"] = store["pil_image"].filter(ImageFilter.BLUR)
+        refresh_image_viewer()
+
+    # FilePicker для сохранения
+    file_picker_save = FilePicker()
+
+    def save_click(e):
+        if store["pil_image"] is None:
+            info_text.value = "Нечего сохранять — картинка не загружена!"
+            page.update()
+            return
+        file_picker_save.save_file()
+
+    def save_file_result(e: FilePickerResultEvent):
+        if e.path:
+            try:
+                store["pil_image"].save(e.path, format="PNG")
+                info_text.value = f"Сохранено как: {e.path}"
+            except Exception as ex:
+                info_text.value = f"Ошибка сохранения: {ex}"
+        else:
+            info_text.value = "Не выбран файл для сохранения."
+        page.update()
+
+    file_picker_save.on_result = save_file_result
+
+    open_image_button = ElevatedButton("Загрузить картинку", on_click=lambda e: file_picker_open.pick_files(allow_multiple=False))
+    save_image_button = ElevatedButton("Сохранить картинку", on_click=save_click)
+
+    page.overlay.append(file_picker_open)
+    page.overlay.append(file_picker_save)
+    file_picker_open.on_result = pick_files_result
+
+    page.title = "Урок 5: Мини-фоторедактор на Pillow + Flet"
+    page.add(
+        Column([
+            info_text,
+            Row([open_image_button, save_image_button], spacing=10),
+            Row([
+                ElevatedButton("Grayscale", on_click=grayscale_click),
+                ElevatedButton("Blur", on_click=blur_click),
+            ], spacing=10),
+            image_viewer
+        ], spacing=20)
+    )
+
+    page.update()
+
+if __name__ == "__main__":
+    flet.app(target=main)
