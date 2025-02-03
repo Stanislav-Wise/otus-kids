@@ -1,0 +1,84 @@
+import flet
+from flet import Page, Column, Row, ElevatedButton, Image, FilePicker, FilePickerResultEvent, Slider, Text
+
+def main(page: Page):
+    # Храним в словаре текущее состояние (чтобы не делать глобальные переменные)
+    store = {
+        "image_path": None,  # здесь сохраним путь к выбранной картинке
+        "display_width": 400, # ширина для просмотра (по умолчанию)
+        "display_height": 300 # высота для просмотра (по умолчанию)
+    }
+
+    # Виджет Image, в котором покажем выбранное изображение
+    # пока src="" (ничего не показываем)
+    image_viewer = Image(
+        src="",
+        width=store["display_width"],
+        height=store["display_height"],
+        fit="contain"  # аккуратно "умещать" всю картинку
+    )
+
+    # Текст для вывода информации (например, если картинка не выбрана)
+    info_text = Text(value="Картинка не выбрана")
+
+    # Файл-пикер (диалог выбора файлов)
+    file_picker = FilePicker()
+
+    # Функция, срабатывающая при завершении выбора файла
+    def pick_files_result(e: FilePickerResultEvent):
+        if e.files:  # если пользователь выбрал хотя бы один файл
+            # Берём путь к первому файлу (e.files[0].path)
+            path = e.files[0].path
+            # Сохраняем путь
+            store["image_path"] = path
+            # Назначаем картинке путь вида file://...
+            image_viewer.src = f"file://{path}"
+            info_text.value = f"Открыт файл: {path}"
+            page.update()
+        else:
+            info_text.value = "Файл не выбран."
+            page.update()
+
+    # Кнопка "Выбрать картинку"
+    pick_image_button = ElevatedButton("Выбрать картинку")
+
+    # Привязываем клик по кнопке к вызову диалога (один файл)
+    pick_image_button.on_click = lambda e: file_picker.pick_files(allow_multiple=False)
+    file_picker.on_result = pick_files_result
+
+    # Слайдеры для изменения ширины и высоты отображаемой картинки
+    width_slider = Slider(value=store["display_width"], min=100, max=800, divisions=14, label="Ширина: {value}px")
+    height_slider = Slider(value=store["display_height"], min=100, max=800, divisions=14, label="Высота: {value}px")
+
+    def width_changed(e):
+        store["display_width"] = width_slider.value
+        image_viewer.width = store["display_width"]
+        page.update()
+
+    def height_changed(e):
+        store["display_height"] = height_slider.value
+        image_viewer.height = store["display_height"]
+        page.update()
+
+    width_slider.on_change = width_changed
+    height_slider.on_change = height_changed
+
+    # Добавляем FilePicker на страницу (важно!)
+    page.overlay.append(file_picker)
+
+    # Выкладываем всё на экран
+    page.title = "Урок 4: Фото-просмотрщик"
+    page.add(
+        Column([
+            info_text,
+            pick_image_button,
+            Row([width_slider, height_slider]),
+            image_viewer,
+        ], spacing=20)
+    )
+
+    page.update()
+
+# Запуск приложения Flet
+if __name__ == "__main__":
+    flet.app(target=main)
