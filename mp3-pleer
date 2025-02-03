@@ -1,0 +1,182 @@
+import flet
+from flet import (
+    Page, Column, Row, ElevatedButton, FilePicker, FilePickerResultEvent,
+    Slider, Text, ProgressBar
+)
+
+import pygame
+
+
+def main(page: flet.Page):
+    """ Тестовое Приложение Flet.  """
+
+    # Инициализируем звуковую систему pygame
+    pygame.mixer.init()
+
+
+    # Храним наше «состояние» в словаре
+    store = {
+        "playlist": [],            # список путей к mp3-файлам
+        "current_index": 0,        # текущий трек в плейлисте
+        "is_paused": False         # флаг паузы
+    }
+
+
+    def update_progress_display():
+        """
+        Однократно узнаём позицию (в миллисекундах),
+        переводим в секунды, обновляем текст и прогресс-бар.
+        Вызываем эту функцию после нажатия кнопок Play, Pause и т.д.
+        """
+        pos_ms = pygame.mixer.music.get_pos()  # -1, если не проигрывается
+        if pos_ms < 0:
+            pos_ms = 0
+        pos_sec = pos_ms // 1000
+        progress_text.value = f"Текущее время: {pos_sec} сек"
+        # Простой прогресс (крутим по модулю 100)
+        progress_bar.value = pos_sec % 100
+        page.update()
+
+
+    def pick_files_result(e: FilePickerResultEvent):
+        """ Когда пользователь выбрал mp3-файлы. """
+        if e.files:
+            for f in e.files:
+                store["playlist"].append(f.path)
+            # Если плейлист был пуст — сбросим индекс на 0
+            if len(store["playlist"]) > 0 and not pygame.mixer.music.get_busy():
+                store["current_index"] = 0
+            page.update()
+
+    def play_click(e):
+        """ Нажата кнопка "Play". """
+        playlist = store["playlist"]
+        if not playlist:
+            progress_text.value = "Плейлист пуст! Сначала добавьте MP3."
+            page.update()
+            return
+
+        if store["is_paused"]:
+            # Если трек был на паузе — возобновим
+            pygame.mixer.music.unpause()
+            store["is_paused"] = False
+            update_progress_display()
+            return
+
+        # Иначе загружаем и проигрываем текущий трек
+        track_path = playlist[store["current_index"]]
+        try:
+            pygame.mixer.music.load(track_path)
+            pygame.mixer.music.play()
+            progress_text.value = f"Играет: {track_path}"
+        except Exception as ex:
+            progress_text.value = f"Ошибка при загрузке: {ex}"
+
+        page.update()
+        update_progress_display()
+
+
+    def pause_click(e):
+        """
+        Кнопка "Pause".
+        Либо ставит на паузу, либо возвращает из паузы.
+        """
+        if pygame.mixer.music.get_busy() and not store["is_paused"]:
+            pygame.mixer.music.pause()
+            store["is_paused"] = True
+        elif store["is_paused"]:
+            pygame.mixer.music.unpause()
+            store["is_paused"] = False
+        update_progress_display()
+
+
+    def stop_click(e):
+        """  Кнопка "Stop".  """
+        pygame.mixer.music.stop()
+        store["is_paused"] = False
+        progress_text.value = "Остановлено"
+        progress_bar.value = 0
+        page.update()
+
+
+    def next_click(e):
+        """ Кнопка "Next" — переключаемся на следующий трек.  """
+        playlist = store["playlist"]
+        if not playlist:
+            return
+        store["current_index"] = (store["current_index"] + 1) % len(playlist)
+        store["is_paused"] = False
+        play_click(e)  # вызовем Play для нового трека
+
+
+    def prev_click(e):
+        """ Кнопка "Previous" — переключаемся на предыдущий трек. """
+        playlist = store["playlist"]
+        if not playlist:
+            return
+        store["current_index"] = (store["current_index"] - 1) % len(playlist)
+        store["is_paused"] = False
+        play_click(e)
+
+
+    def volume_change(e):
+        """ Слайдер громкости (0..100) -> pygame.mixer (0.0..1.0). """
+        vol = volume_slider.value / 100
+        pygame.mixer.music.set_volume(vol)
+
+    def refresh_progress_click(e):
+        """ Кнопка "Обновить прогресс" (если хотим увидеть текущее время трека). """
+        update_progress_display()
+
+
+    pick_files_button = ElevatedButton("Добавить MP3")
+    play_button = ElevatedButton("Play", width=80)
+    pause_button = ElevatedButton("Pause", width=80)
+    stop_button = ElevatedButton("Stop", width=80)
+    prev_button = ElevatedButton("Previous", width=100)
+    next_button = ElevatedButton("Next", width=80)
+    refresh_progress_button = ElevatedButton("Обновить прогресс", width=150)
+
+    # Слайдер громкости
+    volume_slider = Slider(value=50, min=0, max=100, divisions=10, label="{value}%", width=200)
+    volume_slider.on_change = volume_change
+
+    # Прогресс (на данный момент не динамично обновляется, только по нашим вызовам update_progress_display)
+    progress_text = Text(value="Текущее время: 0 сек")
+    progress_bar = ProgressBar(value=0, width=300)
+
+    # FilePicker
+    file_picker = FilePicker()
+    page.overlay.append(file_picker)
+    pick_files_button.on_click = lambda e: file_picker.pick_files(allow_multiple=True)
+    file_picker.on_result = pick_files_result
+
+    # Привязка кнопок
+    play_button.on_click = play_click
+    pause_button.on_click = pause_click
+    stop_button.on_click = stop_click
+    prev_button.on_click = prev_click
+    next_button.on_click = next_click
+    refresh_progress_button.on_click = refresh_progress_click
+
+
+    page.title = "MP3-плеер"
+    page.vertical_alignment = "start"
+
+    page.add(
+        Column([
+            Text("Простой MP3-плеер", size=20, weight="bold"),
+            Row([pick_files_button], alignment="start"),
+            Row([prev_button, play_button, pause_button, stop_button, next_button], spacing=5),
+            Row([Text("Громкость:"), volume_slider]),
+            progress_text,
+            progress_bar,
+            refresh_progress_button
+        ], spacing=10)
+    )
+
+    page.update()
+
+
+if __name__ == "__main__":
+    flet.app(target=main)
